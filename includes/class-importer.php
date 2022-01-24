@@ -2,21 +2,21 @@
 /**
  * The Importer class.
  *
- * @package woocommerce-gvamax
+ * @package woocommerce-eikon
  */
 
-namespace EON\WooCommerce\GVAmax;
+namespace EON\WooCommerce\Eikon;
 
 defined( 'ABSPATH' ) || die;
 
 /**
  * The class responsible for importing (create or update) WooCommerce
- * products with GVA Max information.
+ * products with Eikon information.
  */
 class Importer {
 
-	const CRON_ID                       = 'wc_gvamax_cron';
-	const CRON_INTERVAL                 = 'wc_gvamax_cron_interval';
+	const CRON_ID                       = 'wc_eikon_cron';
+	const CRON_INTERVAL                 = 'wc_eikon_cron_interval';
 	const CRON_INTERVAL_TIME_IN_SECONDS = 60;
 	const MAX_EXECUTION_TIME_IN_SECONDS = 120;
 
@@ -49,7 +49,7 @@ class Importer {
 	 */
 	public function __construct() {
 
-		$system_cron_enabled = GM()->settings->get( 'enable_system_cron' ) === 'yes';
+		$system_cron_enabled = EK()->settings->get( 'enable_system_cron' ) === 'yes';
 
 		if ( $system_cron_enabled ) {
 			$this->setup_system_cron();
@@ -103,7 +103,7 @@ class Importer {
 	 */
 	public function handle_system_cron() {
 
-		$stored_password = GM()->settings->get( 'cron_password' );
+		$stored_password = EK()->settings->get( 'cron_password' );
 
 		// @phpcs:disable WordPress.Security.NonceVerification.Recommended
 		// @phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotValidated
@@ -112,12 +112,12 @@ class Importer {
 
 		if ( empty( $password ) || empty( $stored_password ) ) {
 			// @phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
-			wp_die( __( 'Bad request or bad configuration.', 'woocommerce-gvamax' ) );
+			wp_die( __( 'Bad request or bad configuration.', 'woocommerce-eikon' ) );
 		}
 
 		if ( $password !== $stored_password ) {
 			// @phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
-			wp_die( __( 'Incorrect password.', 'woocommerce-gvamax' ) );
+			wp_die( __( 'Incorrect password.', 'woocommerce-eikon' ) );
 		}
 
 		$this->import();
@@ -133,7 +133,7 @@ class Importer {
 
 		if ( time() - $this->start_time > self::MAX_EXECUTION_TIME_IN_SECONDS ) {
 			// @phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
-			wp_die( __( 'Timeout.', 'woocommerce-gvamax' ) );
+			wp_die( __( 'Timeout.', 'woocommerce-eikon' ) );
 		}
 
 		return true;
@@ -142,7 +142,7 @@ class Importer {
 
 	/**
 	 * Does the heavy lifting of creating and/or updating products
-	 * based on GVAmax data.
+	 * based on Eikon data.
 	 *
 	 * @return void
 	 */
@@ -151,14 +151,14 @@ class Importer {
 		\wc_set_time_limit( self::MAX_EXECUTION_TIME_IN_SECONDS );
 		$this->start_time = time();
 
-		$account_id   = GM()->settings->get( 'account_id' );
-		$access_token = GM()->settings->get( 'access_token' );
+		$account_id   = EK()->settings->get( 'account_id' );
+		$access_token = EK()->settings->get( 'access_token' );
 
 		if ( empty( $account_id ) || empty( $access_token ) ) {
 			return;
 		}
 
-		$properties = GM()->api->get_properties();
+		$properties = EK()->api->get_properties();
 
 		if ( empty( $properties ) ) {
 			return;
@@ -171,7 +171,7 @@ class Importer {
 		 *
 		 * TODO: Replace with Action Scheduler
 		 */
-		$last_processed = get_option( 'wc_gvamax_last_proccessed', 0 );
+		$last_processed = get_option( 'wc_eikon_last_proccessed', 0 );
 
 		$properties = array_slice( $properties, $last_processed );
 
@@ -179,31 +179,31 @@ class Importer {
 
 			$property = $this->expand_property( $property );
 			$this->import_property( $property );
-			update_option( 'wc_gvamax_last_proccessed', $i );
+			update_option( 'wc_eikon_last_proccessed', $i );
 			$this->check_execution_time();
 
 		}
 
-		$this->draft_missing_properties( GM()->api->get_properties() );
+		$this->draft_missing_properties( EK()->api->get_properties() );
 
-		update_option( 'wc_gvamax_last_proccessed', 0 );
+		update_option( 'wc_eikon_last_proccessed', 0 );
 
 	}
 
 	/**
 	 * Adds gallery images and zones to property (this is an expensive operation).
 	 *
-	 * @param Property $property The basic GVAmax property.
+	 * @param Property $property The basic Eikon property.
 	 * @return Property
 	 */
 	private function expand_property( $property ) {
 
-		$property['zonas'] = GM()->api->get_property_zones( $property );
+		$property['zonas'] = EK()->api->get_property_zones( $property );
 
-		$property['contacto'] = GM()->api->get_property_contact_information( $property['id'] );
+		$property['contacto'] = EK()->api->get_property_contact_information( $property['id'] );
 
 		// We remove the first image since its already in the $property object.
-		$images              = GM()->api->get_property_image_urls( $property['id'] );
+		$images              = EK()->api->get_property_image_urls( $property['id'] );
 		$property['galeria'] = array_slice( (array) $images, 1 );
 
 		$property['imagen'] .= '?ext=.jpg';
@@ -214,9 +214,9 @@ class Importer {
 
 	/**
 	 * Creates or updates a single property based on the
-	 * information provided by the GVAmax API.
+	 * information provided by the Eikon API.
 	 *
-	 * @param Property $property GVAmax property.
+	 * @param Property $property Eikon property.
 	 * @return void
 	 */
 	private function import_property( $property ) {
@@ -271,21 +271,21 @@ class Importer {
 	}
 
 	/**
-	 * Returns true if the GVAmax property was updated after the last time we updated the
+	 * Returns true if the Eikon property was updated after the last time we updated the
 	 * WooCommerce product.
 	 *
 	 * @param int      $product_id The WooCommerce product id.
-	 * @param Property $property The GVAmax property.
+	 * @param Property $property The Eikon property.
 	 * @return boolean
 	 */
 	private function is_property_stale( $product_id, $property ) {
 
-		$gvamax_date         = date_create_from_format( 'd/m/Y', $property['fecUpd'] );
-		$gvamax_last_updated = $gvamax_date->getTimestamp();
+		$eikon_date         = date_create_from_format( 'd/m/Y', $property['fecUpd'] );
+		$eikon_last_updated = $eikon_date->getTimestamp();
 
 		$woocommerce_last_updated = $this->get_last_updated( $product_id );
 
-		if ( $gvamax_last_updated > $woocommerce_last_updated ) {
+		if ( $eikon_last_updated > $woocommerce_last_updated ) {
 			return true;
 		}
 
@@ -304,7 +304,7 @@ class Importer {
 	private function get_last_updated( $product_id ) {
 
 		$product = new \WC_Product( $product_id );
-		return $product->get_meta( 'wc_gvamax_last_updated' );
+		return $product->get_meta( 'wc_eikon_last_updated' );
 
 	}
 
@@ -318,14 +318,14 @@ class Importer {
 	 */
 	private function set_last_updated( $product ) {
 
-		$product->update_meta_data( 'wc_gvamax_last_updated', time() );
+		$product->update_meta_data( 'wc_eikon_last_updated', time() );
 
 	}
 
 	/**
 	 * Checks wether or not a property exists as a WooCommerce product.
 	 *
-	 * @param Property $property GVAmax property.
+	 * @param Property $property Eikon property.
 	 * @return int
 	 */
 	private function property_exists( $property ) {
@@ -335,9 +335,9 @@ class Importer {
 	}
 
 	/**
-	 * Creates a new WooCommerce product based on GVAmax information.
+	 * Creates a new WooCommerce product based on Eikon information.
 	 *
-	 * @param Property $property GVAmax property.
+	 * @param Property $property Eikon property.
 	 * @return void
 	 */
 	private function create_property( $property ) {
@@ -363,13 +363,13 @@ class Importer {
 
 	/**
 	 * Updates an existing product with the new property information
-	 * from GVAmax.
+	 * from Eikon.
 	 *
 	 * Its selective in which fields it updates and where it respects
 	 * the changes made by the WooCommerce user.
 	 *
 	 * @param int      $product_id The WooCommerce product ID for that property based on SKU = id.
-	 * @param Property $property GVAmax property.
+	 * @param Property $property Eikon property.
 	 * @return void
 	 */
 	private function update_property( $product_id, $property ) {
@@ -398,24 +398,24 @@ class Importer {
 	 * Returns the generated meta data.
 	 *
 	 * @param WC_Product $product WooCommerce product.
-	 * @param Property   $property GVAmax property.
+	 * @param Property   $property Eikon property.
 	 * @return void
 	 */
 	private function set_meta_data( $product, $property ) {
 
-		$coordinates    = explode( ', ', $property['coord'] );
-		$gvamax_date    = date_create_from_format( 'd/m/Y', $property['fecIng'] );
-		$gvamax_created = $gvamax_date->getTimestamp();
+		$coordinates   = explode( ', ', $property['coord'] );
+		$eikon_date    = date_create_from_format( 'd/m/Y', $property['fecIng'] );
+		$eikon_created = $eikon_date->getTimestamp();
 
 		$meta_data = array(
-			'wc_gvamax_latitude'                 => $coordinates[0],
-			'wc_gvamax_longitude'                => $coordinates[1],
-			'wc_gvamax_created'                  => $gvamax_created,
-			'wc_gvamax_allows_credit'            => $property['aptoCredito'],
-			'wc_gvamax_visible_price'            => $property['precioVisible'],
-			'wc_gvamax_video'                    => $property['video'],
-			'wc_gvamax_tour'                     => $property['tour'],
-			'wc_gvamax_whatsapp'                 => $property['contacto']['wa'],
+			'wc_eikon_latitude'                  => $coordinates[0],
+			'wc_eikon_longitude'                 => $coordinates[1],
+			'wc_eikon_created'                   => $eikon_created,
+			'wc_eikon_allows_credit'             => $property['aptoCredito'],
+			'wc_eikon_visible_price'             => $property['precioVisible'],
+			'wc_eikon_video'                     => $property['video'],
+			'wc_eikon_tour'                      => $property['tour'],
+			'wc_eikon_whatsapp'                  => $property['contacto']['wa'],
 			'_wcj_currency_per_product_currency' => $this->get_currency( $property['moneda'] ),
 		);
 
@@ -428,21 +428,21 @@ class Importer {
 	}
 
 	/**
-	 * Converts GVAmax currency to Booster Plus currency.
+	 * Converts Eikon currency to Booster Plus currency.
 	 *
-	 * @param string $gvamax_currency The GVAmax currency representation.
+	 * @param string $eikon_currency The Eikon currency representation.
 	 * @return string
 	 */
-	private function get_currency( $gvamax_currency ) {
+	private function get_currency( $eikon_currency ) {
 
-		return 'P' === $gvamax_currency ? 'ARS' : 'USD';
+		return 'P' === $eikon_currency ? 'ARS' : 'USD';
 
 	}
 
 	/**
 	 * Returns the category IDs based on property information.
 	 *
-	 * @param Property $property The GVAmax property.
+	 * @param Property $property The Eikon property.
 	 * @return int[]
 	 */
 	private function get_category_ids( $property ) {
@@ -512,7 +512,7 @@ class Importer {
 	/**
 	 * Returns the numeric value of the string price without the unit.
 	 *
-	 * @param string $string_price GVAmax unit price.
+	 * @param string $string_price Eikon unit price.
 	 * @return int
 	 */
 	private function get_price( $string_price ) {
@@ -522,9 +522,9 @@ class Importer {
 	}
 
 	/**
-	 * Returns attachment ID based on GVAmax image URL.
+	 * Returns attachment ID based on Eikon image URL.
 	 *
-	 * @param string $image_url The GVAmax image URL.
+	 * @param string $image_url The Eikon image URL.
 	 * @return int
 	 */
 	private function get_image_id( $image_url ) {
@@ -553,7 +553,7 @@ class Importer {
 		$attachment = array(
 			'guid'           => $image_url,
 			'post_mime_type' => $image_info['mime'],
-			'post_title'     => 'Imagen de GVAmax',
+			'post_title'     => 'Imagen de Eikon',
 		);
 
 		$attachment_metadata = array(
@@ -570,9 +570,9 @@ class Importer {
 	}
 
 	/**
-	 * Returns attachment IDs based on GVAmax image URLs.
+	 * Returns attachment IDs based on Eikon image URLs.
 	 *
-	 * @param string[] $image_urls The GVAmax image URL.
+	 * @param string[] $image_urls The Eikon image URL.
 	 * @return int[]
 	 */
 	private function get_gallery_image_ids( $image_urls ) {
@@ -585,7 +585,7 @@ class Importer {
 	 * Returns the attributes with the corresponding terms attached to them.
 	 * If the attribute doesn't exist it creates it.
 	 *
-	 * @param Property $property The GVAmax property.
+	 * @param Property $property The Eikon property.
 	 *
 	 * @return WC_Product_Attribute[]
 	 */
@@ -689,8 +689,8 @@ class Importer {
 		$schedules[ self::CRON_INTERVAL ] = array(
 			'interval' => self::CRON_INTERVAL_TIME_IN_SECONDS,
 			'display'  => __(
-				'WooCommerce GVAmax Interval',
-				'woocommerce-gvamax'
+				'WooCommerce Eikon Interval',
+				'woocommerce-eikon'
 			),
 		);
 

@@ -2,25 +2,25 @@
 /**
  * The API class.
  *
- * @package woocommerce-gvamax
+ * @package woocommerce-eikon
  */
 
-namespace EON\WooCommerce\GVAmax;
+namespace EON\WooCommerce\Eikon;
 
 defined( 'ABSPATH' ) || die;
 
 /**
- * The class responsible for interacting with the GVAmax API.
+ * The class responsible for interacting with the Eikon API.
  */
 class API {
 
-	const PROPERTY_ENDPOINT     = 'https://gvamax.com.ar/Api/Inmuebles/Get_Inmuebles.asp';
-	const IMAGE_ENDPOINT        = 'https://gvamax.com.ar/Api/Images';
-	const FORM_ENDPOINT         = 'https://gvamax.com.ar/Labs/iFrames/Form/frmContactov6.asp';
-	const INQUIRY_ENDPOINT      = 'https://gvamax.com.ar/Api/CRM/CRM_SaveClienteV2.asp';
-	const ZONE_ENDPOINT         = 'https://gvamax.com.ar/Api/zonas/Get_Zonas.asp';
-	const ZONE_LIMITS_ENDPOINT  = 'https://gvamax.com.ar/Api/Zonas/Get_Zonas_Limites.asp';
-	const CONTACT_INFO_ENDPOINT = 'https://gvamax.com.ar/Api/Inmuebles/Get_Inmuebles_ContactData.asp';
+	const PROPERTY_ENDPOINT     = 'https://eikon.com.ar/Api/Inmuebles/Get_Inmuebles.asp';
+	const IMAGE_ENDPOINT        = 'https://eikon.com.ar/Api/Images';
+	const FORM_ENDPOINT         = 'https://eikon.com.ar/Labs/iFrames/Form/frmContactov6.asp';
+	const INQUIRY_ENDPOINT      = 'https://eikon.com.ar/Api/CRM/CRM_SaveClienteV2.asp';
+	const ZONE_ENDPOINT         = 'https://eikon.com.ar/Api/zonas/Get_Zonas.asp';
+	const ZONE_LIMITS_ENDPOINT  = 'https://eikon.com.ar/Api/Zonas/Get_Zonas_Limites.asp';
+	const CONTACT_INFO_ENDPOINT = 'https://eikon.com.ar/Api/Inmuebles/Get_Inmuebles_ContactData.asp';
 
 	const ENDPOINT_TIMEOUT_IN_SECONDS          = 60;
 	const ENDPOINT_CACHE_EXPIRATION_IN_SECONDS = 3600;
@@ -54,13 +54,13 @@ class API {
 	 */
 	public function __construct() {
 
-		$this->account_id   = GM()->settings->get( 'account_id' );
-		$this->access_token = GM()->settings->get( 'access_token' );
+		$this->account_id   = EK()->settings->get( 'account_id' );
+		$this->access_token = EK()->settings->get( 'access_token' );
 
 	}
 
 	/**
-	 * Returns the GVAmax properties or a specific one.
+	 * Returns the Eikon properties or a specific one.
 	 *
 	 * @param Array $parameters The endpoint parameters.
 	 * @return Property[]
@@ -72,9 +72,9 @@ class API {
 	}
 
 	/**
-	 * Returns the GVAmax image URLs for a property.
+	 * Returns the Eikon image URLs for a property.
 	 *
-	 * @param int $property_id The GVAmax property ID.
+	 * @param int $property_id The Eikon property ID.
 	 * @return Array
 	 */
 	public function get_property_contact_information( $property_id ) {
@@ -95,9 +95,9 @@ class API {
 	}
 
 	/**
-	 * Returns the GVAmax image URLs for a property.
+	 * Returns the Eikon image URLs for a property.
 	 *
-	 * @param int $property_id The GVAmax property ID.
+	 * @param int $property_id The Eikon property ID.
 	 * @return URL[]
 	 */
 	public function get_property_image_urls( $property_id ) {
@@ -130,7 +130,7 @@ class API {
 	}
 
 	/**
-	 * Returns the contact form URL from GVAmax.
+	 * Returns the contact form URL from Eikon.
 	 *
 	 * @param int $property_id Property id.
 	 * @return string
@@ -154,7 +154,7 @@ class API {
 	/**
 	 * Returns the zones the property belongs to.
 	 *
-	 * @param Property $property The GVAmax property as returned by the property endpoint.
+	 * @param Property $property The Eikon property as returned by the property endpoint.
 	 * @return Zone[]
 	 */
 	public function get_property_zones( $property ) {
@@ -176,8 +176,8 @@ class API {
 	/**
 	 * Returns wether or not the property is inside a certain zone.
 	 *
-	 * @param Property $property The GVAmax property as returned by the property endpoint.
-	 * @param Zone     $zone The GVAmax zone as returned by the zone endpoint.
+	 * @param Property $property The Eikon property as returned by the property endpoint.
+	 * @param Zone     $zone The Eikon zone as returned by the zone endpoint.
 	 * @return boolean
 	 */
 	private function property_in_zone( $property, $zone ) {
@@ -225,7 +225,7 @@ class API {
 	}
 
 	/**
-	 * Returns the GVAmax zones.
+	 * Returns the Eikon zones.
 	 *
 	 * @param Array $parameters The endpoint parameters.
 	 * @return Zone[]
@@ -237,7 +237,7 @@ class API {
 	}
 
 	/**
-	 * Sends GVAmax inquiry.
+	 * Sends Eikon inquiry.
 	 *
 	 * @param Array $parameters The endpoint parameters.
 	 * @return void
@@ -286,7 +286,7 @@ class API {
 	private function query_endpoint( $endpoint, $parameters = array() ) {
 
 		$url       = $this->get_endpoint( $endpoint, $parameters );
-		$transient = get_transient( 'wc_gvamax_' . hash( 'md5', $url ) );
+		$transient = get_transient( 'wc_eikon_' . hash( 'md5', $url ) );
 
 		if ( $transient ) {
 			return $transient;
@@ -305,7 +305,7 @@ class API {
 
 		$body = wp_remote_retrieve_body( $response );
 
-		// This is a patch because the GVAmax image endpoint incorrectly sends text/html as its content type.
+		// This is a patch because the Eikon image endpoint incorrectly sends text/html as its content type.
 		if ( self::IMAGE_ENDPOINT === $endpoint ) {
 			$body = wp_strip_all_tags( $body );
 		}
@@ -318,7 +318,7 @@ class API {
 		}
 
 		set_transient(
-			'wc_gvamax_' . hash( 'md5', $url ),
+			'wc_eikon_' . hash( 'md5', $url ),
 			$json,
 			self::ENDPOINT_CACHE_EXPIRATION_IN_SECONDS
 		);
@@ -328,7 +328,7 @@ class API {
 	}
 
 	/**
-	 * Returns the GVAmax endpoint with authorization headers and allows
+	 * Returns the Eikon endpoint with authorization headers and allows
 	 * parametrization.
 	 *
 	 * @param const $endpoint The endpoint constant.

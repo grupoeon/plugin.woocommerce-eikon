@@ -2,10 +2,10 @@
 /**
  * The Helpers class.
  *
- * @package woocommerce-gvamax
+ * @package woocommerce-eikon
  */
 
-namespace EON\WooCommerce\GVAmax;
+namespace EON\WooCommerce\Eikon;
 
 defined( 'ABSPATH' ) || die;
 
@@ -37,97 +37,6 @@ class Helpers {
 			self::$_instance = new self();
 		}
 		return self::$_instance;
-	}
-
-	/**
-	 * Returns wether or not the point is inside a polygon.
-	 *
-	 * @link https://stackoverflow.com/a/55158861
-	 * @param string   $point The point.
-	 * @param string[] $polygon The polygon.
-	 * @return boolean
-	 */
-	public function is_point_in_polygon( $point, $polygon ) {
-		$point = $this->point_string_to_coords( $point );
-
-		// Must be a self closed polygon.
-		if ( array_slice( $polygon, -1 )[0] !== $polygon[0] ) {
-			$polygon[] = $polygon[0];
-		}
-
-		$vertices = array_map( array( $this, 'point_string_to_coords' ), $polygon );
-
-		if ( $this->is_point_on_vertex( $point, $vertices ) ) {
-			return true;
-		}
-
-		$intersections  = 0;
-		$vertices_count = count( $vertices );
-
-		for ( $i = 1; $i < $vertices_count; $i++ ) {
-			$vertex1 = $vertices[ $i - 1 ];
-			$vertex2 = $vertices[ $i ];
-
-			if ( $vertex1['y'] === $vertex2['y']
-				&& $vertex1['y'] === $point['y']
-				&& $point['x'] > min( $vertex1['x'], $vertex2['x'] )
-				&& $point['x'] < max( $vertex1['x'], $vertex2['x'] ) ) {
-					return true;
-			}
-
-			if ( $point['y'] > min( $vertex1['y'], $vertex2['y'] )
-				&& $point['y'] <= max( $vertex1['y'], $vertex2['y'] )
-				&& $point['x'] <= max( $vertex1['x'], $vertex2['x'] )
-				&& $vertex1['y'] !== $vertex2['y'] ) {
-				$xinters = ( $point['y'] - $vertex1['y'] )
-				* ( $vertex2['x'] - $vertex1['x'] )
-				/ ( $vertex2['y'] - $vertex1['y'] )
-				+ $vertex1['x'];
-
-				if ( $xinters === $point['x'] ) {
-					return true;
-				}
-
-				if ( $vertex1['x'] === $vertex2['x'] || $point['x'] <= $xinters ) {
-					$intersections++;
-				}
-			}
-		}
-		if ( 0 !== $intersections % 2 ) {
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	/**
-	 * Returns wether or not the point is on a vertice.
-	 *
-	 * @param Coordinate   $point The point.
-	 * @param Coordinate[] $vertices The vertices.
-	 * @return boolean
-	 */
-	private function is_point_on_vertex( $point, $vertices ) {
-		foreach ( $vertices as $vertex ) {
-			if ( $point === $vertex ) {
-				return true;
-			}
-		}
-
-	}
-
-	/**
-	 * Returns a coordinates array from a comma separated coordinate string.
-	 *
-	 * @param string $point_string The coordinate string (lat,lng).
-	 * @return Coordinate
-	 */
-	private function point_string_to_coords( $point_string ) {
-		$coordinates = explode( ',', $point_string );
-		return array(
-			'x' => $coordinates[0],
-			'y' => $coordinates[1],
-		);
 	}
 
 	/**

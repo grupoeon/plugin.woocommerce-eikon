@@ -1,36 +1,36 @@
 <?php
 /**
- * The GVAmax class.
+ * The Eikon class.
  *
- * @package woocommerce-gvamax
+ * @package woocommerce-eikon
  */
 
-namespace EON\WooCommerce\GVAmax;
+namespace EON\WooCommerce\Eikon;
 
 defined( 'ABSPATH' ) || die;
 
 /**
- * The class responsible for articulating the entire GVAmax integration.
+ * The class responsible for articulating the entire Eikon integration.
  */
-class GVAMax {
+class Eikon {
 
 	/**
 	 * The single instance of the class.
 	 *
      * @phpcs:disable PSR2.Classes.PropertyDeclaration.Underscore
 	 *
-	 * @var GVAMax
+	 * @var Eikon
 	 */
 	public static $_instance = null;
 
 	/**
-	 * Main GVAMax Instance.
+	 * Main Eikon Instance.
 	 *
-	 * Ensures only one instance of GVAmax is loaded or can be loaded.
+	 * Ensures only one instance of Eikon is loaded or can be loaded.
 	 *
 	 * @static
-	 * @see GM()
-	 * @return GVAMax - Main instance.
+	 * @see EK()
+	 * @return Eikon - Main instance.
 	 */
 	public static function instance() {
 		if ( is_null( self::$_instance ) ) {
@@ -41,7 +41,7 @@ class GVAMax {
 	}
 
 	/**
-	 * GVAMax Constructor.
+	 * Eikon Constructor.
 	 */
 	public function __construct() {
 
@@ -57,8 +57,8 @@ class GVAMax {
 	 */
 	private function define_constants() {
 
-		define( __NAMESPACE__ . '\ID', 'woocommerce-gvamax' );
-		define( __NAMESPACE__ . '\DASHED_ID', 'woocommerce_gvamax' );
+		define( __NAMESPACE__ . '\ID', 'woocommerce-eikon' );
+		define( __NAMESPACE__ . '\DASHED_ID', 'woocommerce_eikon' );
 		define( __NAMESPACE__ . '\VERSION', '1.0.0' );
 		define( __NAMESPACE__ . '\FILE', __FILE__ );
 		define( __NAMESPACE__ . '\DIR', plugin_dir_path( FILE ) );
@@ -78,8 +78,6 @@ class GVAMax {
 		require_once DIR . 'includes/class-property.php';
 		require_once DIR . 'includes/class-api.php';
 		require_once DIR . 'includes/class-importer.php';
-		require_once DIR . 'includes/class-shop.php';
-		require_once DIR . 'includes/class-form.php';
 
 	}
 
@@ -90,24 +88,23 @@ class GVAMax {
 	 */
 	private function initialize_modules() {
 
+		/*
 		$this->helpers  = Helpers::instance();
 		$this->settings = Settings::instance();
 		$this->api      = API::instance();
 		$this->importer = Importer::instance();
-		$this->shop     = Shop::instance();
-		$this->form     = Form::instance();
-
+		*/
 	}
 
 }
 
 /**
- * Returns the main GVAmax instance.
+ * Returns the main Eikon instance.
  *
  * @phpcs:disable WordPress.NamingConventions.ValidFunctionName.FunctionNameInvalid
  *
- * @return GVAmax
+ * @return Eikon
  */
-function GM() {
-	return GVAmax::instance();
+function EK() {
+	return Eikon::instance();
 }
