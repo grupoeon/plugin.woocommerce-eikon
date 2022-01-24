@@ -61,6 +61,14 @@ class API {
 	 */
 	public function get_products() {
 
+		$cached_products = get_transient( 'wc_eikon_products' );
+
+		if ( $cached_products ) {
+
+			return $cached_products;
+
+		}
+
 		$token = $this->get_auth_token();
 
 		if ( empty( $token ) ) {
@@ -85,7 +93,33 @@ class API {
 
 		}
 
-		return json_decode( wp_remote_retrieve_body( $response ), true );
+		$products = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		$products = array_map(
+			function( $product ) {
+
+				foreach ( array_keys( $product ) as $key ) {
+					$product[ $key ] = trim( $product[ $key ] );
+				}
+
+				return $product;
+
+			},
+			$products
+		);
+
+		$products = array_filter(
+			$products,
+			function( $product ) {
+
+				return ! ( '0000' === $product['codigo'] || '*' === $product['codigo'][0] );
+
+			}
+		);
+
+		set_transient( 'wc_eikon_products', $products, self::ENDPOINT_CACHE_EXPIRATION_IN_SECONDS );
+
+		return $products;
 
 	}
 

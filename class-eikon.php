@@ -90,9 +90,7 @@ class Eikon {
 		$this->helpers  = Helpers::instance();
 		$this->settings = Settings::instance();
 		$this->api      = API::instance();
-		/*
 		$this->importer = Importer::instance();
-		*/
 	}
 
 }

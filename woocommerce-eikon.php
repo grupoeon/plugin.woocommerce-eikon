@@ -26,3 +26,24 @@ defined( 'ABSPATH' ) || die;
 require_once __DIR__ . '/class-eikon.php';
 
 add_action( 'init', array( __NAMESPACE__ . '\Eikon', 'instance' ) );
+add_action(
+	'init',
+	function() {
+
+		if ( isset( $_GET['delete'] ) ) {
+
+			$products = get_posts(
+				array(
+					'post_type'      => 'product',
+					'fields'         => 'ids',
+					'posts_per_page' => -1,
+				)
+			);
+			foreach ( $products as $product ) {
+				wp_delete_post( $product, true );
+			}
+		}
+
+	},
+	11
+);
