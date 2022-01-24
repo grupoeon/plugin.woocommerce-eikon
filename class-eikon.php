@@ -75,7 +75,6 @@ class Eikon {
 
 		require_once DIR . 'includes/class-helpers.php';
 		require_once DIR . 'includes/class-settings.php';
-		require_once DIR . 'includes/class-property.php';
 		require_once DIR . 'includes/class-api.php';
 		require_once DIR . 'includes/class-importer.php';
 
@@ -88,10 +87,10 @@ class Eikon {
 	 */
 	private function initialize_modules() {
 
-		/*
 		$this->helpers  = Helpers::instance();
 		$this->settings = Settings::instance();
 		$this->api      = API::instance();
+		/*
 		$this->importer = Importer::instance();
 		*/
 	}
