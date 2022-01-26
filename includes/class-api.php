@@ -78,7 +78,6 @@ class API {
 
 		}
 
-		/*
 		$response = wp_remote_get(
 			self::PRODUCTS_ENDPOINT,
 			array(
@@ -94,10 +93,18 @@ class API {
 			return null;
 
 		}
+
 		$products = json_decode( wp_remote_retrieve_body( $response ), true );
 
-		*/
+		if ( count( $products ) < 2 ) {
+
+			return null;
+
+		}
+
+		/*
 		$products = json_decode( file_get_contents( DIR . '/sample.json' ), true );
+		*/
 
 		$products = array_map(
 			function( $product ) {
