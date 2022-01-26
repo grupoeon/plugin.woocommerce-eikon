@@ -57,17 +57,16 @@ class API {
 	/**
 	 * Gets products from Eikon API.
 	 *
+	 * @param int $limit Limits the amount of products to get, useful for debugging.
 	 * @return Product[]
 	 */
-	public function get_products() {
-
-		$max = 1000000;
+	public function get_products( $limit = PHP_INT_MAX ) {
 
 		$cached_products = get_transient( 'wc_eikon_products' );
 
 		if ( $cached_products ) {
 
-			return array_slice( $cached_products, 0, $max );
+			return array_slice( $cached_products, 0, $limit );
 
 		}
 
@@ -79,6 +78,7 @@ class API {
 
 		}
 
+		/*
 		$response = wp_remote_get(
 			self::PRODUCTS_ENDPOINT,
 			array(
@@ -94,8 +94,10 @@ class API {
 			return null;
 
 		}
-
 		$products = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		*/
+		$products = json_decode( file_get_contents( DIR . '/sample.json' ), true );
 
 		$products = array_map(
 			function( $product ) {
@@ -104,7 +106,16 @@ class API {
 					$product[ $key ] = trim( $product[ $key ] );
 				}
 
-				return $product;
+				return array(
+					'sku'             => $product['codigo'],
+					'name'            => $product['decripcion'],
+					'stock'           => intval( $product['existencia'] ),
+					'price'           => round( $product['precio'], 2 ),
+					'wholesale_price' => round( $product['precio_mayorista'], 2 ),
+					'brand'           => $product['marca_descripcion'],
+					'category'        => $product['rubro_descripcion'],
+					'subcategory'     => $product['familia_descripcion'],
+				);
 
 			},
 			$products
@@ -114,14 +125,14 @@ class API {
 			$products,
 			function( $product ) {
 
-				return ! ( '0000' === $product['codigo'] || '*' === $product['codigo'][0] );
+				return ! ( '0000' === $product['sku'] || '*' === $product['sku'][0] );
 
 			}
 		);
 
 		set_transient( 'wc_eikon_products', $products, self::ENDPOINT_CACHE_EXPIRATION_IN_SECONDS );
 
-		return array_slice( $products, 0, $max );
+		return array_slice( $products, 0, $limit );
 
 	}
 

@@ -15,10 +15,19 @@ defined( 'ABSPATH' ) || die;
  */
 class Importer {
 
-	const CRON_ID                       = 'wc_eikon_cron';
-	const CRON_INTERVAL                 = 'wc_eikon_cron_interval';
-	const CRON_INTERVAL_TIME_IN_SECONDS = 350;
-	const MAX_EXECUTION_TIME_IN_SECONDS = 300;
+	const ACTION_SCHEDULER_QUEUE_TIMEOUT = 60;
+	const ACTION_SCHEDULER_BATCH_SIZE    = 100;
+
+	const IMPORT_ACTION    = 'wc_eikon_import';
+	const IMPORT_FRECUENCY = MINUTE_IN_SECONDS * 30;
+
+	const IMPORT_BATCH_ACTION = 'wc_eikon_import_batch';
+	const IMPORT_BATCH_SIZE   = 50;
+
+	const IMPORT_PRODUCT_ACTION = 'wc_eikon_import_product';
+
+	const BATCHES_AND_PRODUCTS_GROUP = 'wc_eikon_batches_and_products_group';
+
 
 	/**
 	 * The single instance of the class.
@@ -28,15 +37,6 @@ class Importer {
 	 * @var Importer
 	 */
 	protected static $_instance = null;
-
-	/**
-	 * The current import index.
-	 *
-     * @phpcs:disable PSR2.Classes.PropertyDeclaration.Underscore
-	 *
-	 * @var int
-	 */
-	private $_index = null;
 
 	/**
 	 * Main Importer Instance.
@@ -58,304 +58,154 @@ class Importer {
 	 */
 	public function __construct() {
 
-		$system_cron_enabled = EK()->settings->get( 'enable_system_cron' ) === 'yes';
-
-		if ( $system_cron_enabled ) {
-			$this->setup_system_cron();
-		} else {
-			$this->setup_wp_cron();
+		if ( ! class_exists( '\ActionScheduler' ) ) {
+			return;
 		}
 
-	}
-
-	/**
-	 * Adds necessary hooks for system cronjob.
-	 *
-	 * @return void
-	 */
-	private function setup_system_cron() {
-
-		add_action(
-			'admin_post_' . self::CRON_ID,
-			array( $this, 'handle_system_cron' )
-		);
-
-		add_action(
-			'admin_post_nopriv_' . self::CRON_ID,
-			array( $this, 'handle_system_cron' )
-		);
-
-		wp_clear_scheduled_hook( self::CRON_ID );
-
-		register_shutdown_function(
+		add_filter(
+			'action_scheduler_queue_runner_time_limit',
 			function() {
-				if ( wp_doing_cron() && $this->is_importing() ) {
-					H()->log( 'importer', '💥 System Shutdown.' );
-				}
+				return self::ACTION_SCHEDULER_QUEUE_TIMEOUT;
 			}
 		);
 
-	}
-
-	/**
-	 * Adds necessary hooks for WordPress cron.
-	 *
-	 * @return void
-	 */
-	private function setup_wp_cron() {
-
-		// phpcs:disable WordPress.WP.CronInterval.ChangeDetected
-		add_filter( 'cron_schedules', array( $this, 'get_intervals' ) );
-		add_action( self::CRON_ID, array( $this, 'import' ) );
-		if ( ! wp_next_scheduled( self::CRON_ID ) ) {
-			wp_schedule_event( time(), self::CRON_INTERVAL, self::CRON_ID );
-		}
-
-		add_action(
-			'shutdown',
+		add_filter(
+			'action_scheduler_queue_runner_batch_size',
 			function() {
-				if ( wp_doing_cron() && $this->is_importing() ) {
-					H()->log( 'importer', '💥 WordPress Shutdown.' );
-				}
+				return self::ACTION_SCHEDULER_BATCH_SIZE;
 			}
 		);
 
+		add_action( self::IMPORT_ACTION, array( $this, 'import' ) );
+		add_action( self::IMPORT_BATCH_ACTION, array( $this, 'import_batch' ) );
+		add_action( self::IMPORT_PRODUCT_ACTION, array( $this, 'import_product' ) );
+
+		if ( false === \as_has_scheduled_action( self::IMPORT_ACTION ) ) {
+			\as_schedule_recurring_action( time(), self::IMPORT_FRECUENCY, self::IMPORT_ACTION );
+		}
+
 	}
 
 	/**
-	 * Handles the system cron validation.
+	 * Starts the import process.
 	 *
-	 * @return void
-	 */
-	public function handle_system_cron() {
-
-		$stored_password = EK()->settings->get( 'cron_password' );
-
-		// @phpcs:disable WordPress.Security.NonceVerification.Recommended
-		// @phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotValidated
-		// @phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$password = wp_unslash( $_REQUEST['pass'] ) ?? '';
-
-		if ( empty( $password ) || empty( $stored_password ) ) {
-			// @phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
-			wp_die( __( 'Bad request or bad configuration.', 'woocommerce-eikon' ) );
-		}
-
-		if ( $password !== $stored_password ) {
-			// @phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
-			wp_die( __( 'Incorrect password.', 'woocommerce-eikon' ) );
-		}
-
-		$this->import();
-
-	}
-
-	/**
-	 * Checks execution time and dies if it exceeds the maximum allowed.
+	 * 1. Checks if all previous import batches have run, if not, exits.
+	 * 2. Gets the Eikon products from the API.
+	 * 3. Splits the products into manageable import batches.
+	 * 4. Schedules the individual batches execution for as soon as possible.
 	 *
-	 * @return boolean|void
-	 */
-	public function check_execution_time() {
-
-		if ( time() - $this->start_time > self::MAX_EXECUTION_TIME_IN_SECONDS - 10 ) {
-			$this->stop_import();
-			// @phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
-			wp_die( __( 'Timeout.', 'woocommerce-eikon' ) );
-		}
-
-		return true;
-
-	}
-
-	/**
-	 * Does the heavy lifting of creating and/or updating products
-	 * based on Eikon data.
+	 * Later (as soon as possible):
+	 * 5. Each batch gets executed and schedules its respective creations or updates.
+	 *
+	 * Later (as soon as possible):
+	 * 6. Products get created or updated.
 	 *
 	 * @return void
 	 */
 	public function import() {
 
-		if ( $this->is_importing() ) {
+		$pending_imports = \as_get_scheduled_actions(
+			array(
+				'group'    => self::BATCHES_AND_PRODUCTS_GROUP,
+				'status'   => \ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => -1,
+			),
+			'ids'
+		);
+
+		if ( count( $pending_imports ) ) {
 			return;
 		}
 
-		$this->start_import();
+		$completed_imports = \as_get_scheduled_actions(
+			array(
+				'group'    => self::BATCHES_AND_PRODUCTS_GROUP,
+				'status'   => \ActionScheduler_Store::STATUS_COMPLETE,
+				'per_page' => -1,
+			),
+			'ids'
+		);
 
-		\wc_set_time_limit( self::MAX_EXECUTION_TIME_IN_SECONDS );
-		$this->start_time = time();
+		$canceled_imports = \as_get_scheduled_actions(
+			array(
+				'group'    => self::BATCHES_AND_PRODUCTS_GROUP,
+				'status'   => \ActionScheduler_Store::STATUS_CANCELED,
+				'per_page' => -1,
+			),
+			'ids'
+		);
 
-		$account_id   = EK()->settings->get( 'account_id' );
-		$access_token = EK()->settings->get( 'access_token' );
+		$done_imports = array_merge( $completed_imports, $canceled_imports );
 
-		if ( empty( $account_id ) || empty( $access_token ) ) {
-			$this->stop_import( 'Credentials not found.' );
-			return;
+		foreach ( $done_imports as $import_id ) {
+			\ActionScheduler_Store::instance()->delete_action( $import_id );
 		}
+
+		$products       = EK()->api->get_products();
+		$products_count = count( $products );
+
+		for ( $i = 0; $i <= $products_count; $i += self::IMPORT_BATCH_SIZE ) {
+
+			\as_enqueue_async_action(
+				self::IMPORT_BATCH_ACTION,
+				array(
+					array(
+						'index' => $i / self::IMPORT_BATCH_SIZE,
+						'start' => $i,
+					),
+				),
+				self::BATCHES_AND_PRODUCTS_GROUP
+			);
+
+		}
+
+	}
+
+
+	/**
+	 * Imports a batch of products.
+	 *
+	 * 1. Gets product data from the Eikon API and the batch data.
+	 * 2. Schedules a product import as soon as possible.
+	 *
+	 * Later (as soon as possible):
+	 * 6. Products get created or updated.
+	 *
+	 * @param array $batch The batch information.
+	 * @return void
+	 */
+	public function import_batch( $batch ) {
 
 		$products = EK()->api->get_products();
-
-		if ( DEBUG ) {
-			H()->log( 'importer', '📦 Fetched ' . count( $products ) . ' products from Eikon.' );
-		}
-
-		if ( empty( $products ) ) {
-			$this->stop_import( 'Could not retrieve any products from Eikon.' );
-			return;
-		}
-
-		/**
-		 * This system assumes properties always come in the same order.
-		 * Also the only resource it monitors is time execution, it does
-		 * not care about other server resources.
-		 *
-		 * TODO: Replace with Action Scheduler
-		 */
-		$last_processed = get_option( 'wc_eikon_last_proccessed', 0 );
-
-		$products = array_slice( $products, $last_processed );
-
-		if ( DEBUG ) {
-			H()->log( 'importer', '📦 ' . count( $products ) . ' products remain in this batch.' );
-		}
+		$products = array_slice( $products, $batch['start'], self::IMPORT_BATCH_SIZE );
 
 		foreach ( $products as $i => $product ) {
 
-			$this->index( $last_processed + $i );
-			$this->import_product( $product );
-			$this->check_execution_time();
+			\as_enqueue_async_action(
+				self::IMPORT_PRODUCT_ACTION,
+				array(
+					array(
+						'batch'   => $batch['index'],
+						'index'   => $i,
+						'product' => $product,
+					),
+				),
+				self::BATCHES_AND_PRODUCTS_GROUP
+			);
 
-		}
-
-		$this->stop_import();
-		$this->index( 0 );
-
-		if ( DEBUG ) {
-			H()->log( 'importer', '🏆 Finished import run.' );
 		}
 
 	}
 
 	/**
-	 * Starts the import process, saves an option to prevent multiple
-	 * instances of the importer to run at the same time.
+	 * Imports a product (creates or updates).
 	 *
+	 * @param array $data The product data along with the scheduler data.
 	 * @return void
 	 */
-	private function start_import() {
+	public function import_product( $data ) {
 
-		update_option( 'wc_eikon_import_status', 'importing' );
-		update_option( 'wc_eikon_import_status_updated', time() );
-
-		if ( DEBUG ) {
-			H()->log( 'importer', "⛳ Starting import at index: {$this->position()}/{$this->get_total()}" );
-		}
-
-	}
-
-	/**
-	 * Stops the import process, saves an option to indicate a new import
-	 * batch should start on the next run.
-	 *
-	 * @param string $message Optional error message.
-	 * @return void
-	 */
-	private function stop_import( $message = null ) {
-
-		update_option( 'wc_eikon_import_status', 'stopped' );
-		update_option( 'wc_eikon_import_status_updated', time() );
-
-		if ( DEBUG ) {
-			if ( $message ) {
-				H()->log( 'importer', "🚫 Stopped import because: $message" );
-			} else {
-				H()->log( 'importer', "⛔ Stopped import at index: {$this->position()}/{$this->get_total()}." );
-			}
-		}
-
-	}
-
-	/**
-	 * Checks wether or not there is an import batch executing.
-	 *
-	 * @return boolean
-	 */
-	private function is_importing() {
-
-		if ( time() - get_option( 'wc_eikon_import_status_updated', time() ) >= self::MAX_EXECUTION_TIME_IN_SECONDS ) {
-			$this->stop_import();
-			return false;
-		}
-
-		return get_option( 'wc_eikon_import_status', 'stopped' ) === 'importing';
-
-	}
-
-
-	/**
-	 * Retrieves or sets the current product index.
-	 *
-	 * @param null|int $index The index.
-	 * @return void|int
-	 */
-	private function index( $index = null ) {
-
-		if ( is_numeric( $index ) ) {
-
-			update_option( 'wc_eikon_last_proccessed', $index );
-			$this->_index = $index;
-
-		} else {
-
-			if ( null === $this->_index ) {
-
-				return (int) get_option( 'wc_eikon_last_proccessed', 0 );
-
-			} else {
-
-				return $this->_index;
-
-			}
-		}
-
-	}
-
-	/**
-	 * Retrieves the position which is always index + 1.
-	 *
-	 * @return int
-	 */
-	private function position() {
-
-		return $this->index() + 1;
-
-	}
-
-	/**
-	 * Gets the total amount of products to import.
-	 *
-	 * @return int
-	 */
-	private function get_total() {
-
-		return count( EK()->api->get_products() );
-
-	}
-
-
-	/**
-	 * Creates or updates a single product based on the
-	 * information provided by the Eikon API.
-	 *
-	 * @param Product $product Eikon property.
-	 * @return void
-	 */
-	private function import_product( $product ) {
-
-		if ( DEBUG ) {
-
-			H()->log( 'importer', "Processing product {$this->position()}/{$this->get_total()}" );
-
-		}
+		$product = $data['product'];
 
 		$product_id = $this->product_exists( $product );
 
@@ -375,7 +225,7 @@ class Importer {
 	 */
 	private function product_exists( $product ) {
 
-		return \wc_get_product_id_by_sku( $product['codigo'] );
+		return \wc_get_product_id_by_sku( $product['sku'] );
 
 	}
 
@@ -387,30 +237,17 @@ class Importer {
 	 */
 	private function create_product( $product ) {
 
-		if ( DEBUG ) {
-			H()->log( 'importer', '🆕 Creating new product: #' . $product['codigo'] . '.' );
-		}
-
-		$stock           = round( $product['existencia'] );
-		$price           = round( $product['precio'], 2 );
-		$wholesale_price = round( $product['precio_mayorista'], 2 );
-
 		$woocommerce_product = new \WC_Product();
-		$woocommerce_product->set_sku( $product['codigo'] );
-		$woocommerce_product->save();
+		$woocommerce_product->set_sku( $product['sku'] );
 
-		$woocommerce_product->set_name( $product['decripcion'] );
+		$woocommerce_product->set_name( $product['name'] );
 		$woocommerce_product->set_manage_stock( true );
-		$woocommerce_product->set_stock_quantity( $stock );
-		$woocommerce_product->set_regular_price( $price );
+		$woocommerce_product->set_stock_quantity( $product['stock'] );
+		$woocommerce_product->set_regular_price( $product['price'] );
 		$woocommerce_product->set_category_ids( $this->get_category_ids( $product ) );
-		$woocommerce_product->update_meta_data( 'wholesale_customer_wholesale_price', $wholesale_price );
+		$woocommerce_product->update_meta_data( 'wholesale_customer_wholesale_price', $product['wholesale_price'] );
 
 		$woocommerce_product->save();
-
-		if ( DEBUG ) {
-			H()->log( 'importer', '🆗 Finished creating product: #' . $product['codigo'] . '.' );
-		}
 
 	}
 
@@ -424,51 +261,35 @@ class Importer {
 	 */
 	private function update_product( $product_id, $product ) {
 
-		if ( DEBUG ) {
-			H()->log( 'importer', '🔁 Updating product: #' . $product['codigo'] . '.' );
-		}
-
 		$woocommerce_product = new \WC_Product( $product_id );
 
 		$old_stock           = $woocommerce_product->get_stock_quantity();
 		$old_price           = floatval( $woocommerce_product->get_regular_price() );
 		$old_wholesale_price = floatval( $woocommerce_product->get_meta( 'wholesale_customer_wholesale_price' ) );
-		$new_stock           = intval( $product['existencia'] );
-		$new_price           = round( $product['precio'], 2 );
-		$new_wholesale_price = round( $product['precio_mayorista'], 2 );
+
+		$new_stock           = $product['stock'];
+		$new_price           = $product['price'];
+		$new_wholesale_price = $product['wholesale_price'];
 
 		if ( $old_stock !== $new_stock ) {
 
 			$woocommerce_product->set_stock_quantity( $new_stock );
 
-			if ( DEBUG ) {
-				H()->log( 'importer', "-- Updating stock from [ $old_stock ] to [ $new_stock ]." );
-			}
 		}
 
 		if ( $old_price !== $new_price ) {
 
 			$woocommerce_product->set_regular_price( $new_price );
 
-			if ( DEBUG ) {
-				H()->log( 'importer', "-- Updating regular price from [ $old_price ] to [ $new_price ]." );
-			}
 		}
 
 		if ( $old_wholesale_price !== $new_wholesale_price ) {
 
 			$woocommerce_product->update_meta_data( 'wholesale_customer_wholesale_price', $new_wholesale_price );
 
-			if ( DEBUG ) {
-				H()->log( 'importer', "-- Updating wholesale price from [ $old_wholesale_price ] to [ $new_wholesale_price ]." );
-			}
 		}
 
 		$woocommerce_product->save();
-
-		if ( DEBUG ) {
-			H()->log( 'importer', '🆗 Finished updating product: #' . $product['codigo'] . '.' );
-		}
 
 	}
 
@@ -481,10 +302,10 @@ class Importer {
 	private function get_category_ids( $product ) {
 
 		$brand_parent_id = $this->generate_category_id( 'Marcas' );
-		$brand_id        = $this->generate_category_id( $product['marca_descripcion'], $brand_parent_id );
+		$brand_id        = $this->generate_category_id( $product['brand'], $brand_parent_id );
 
-		$category_id    = $this->generate_category_id( $product['rubro_descripcion'] );
-		$subcategory_id = $this->generate_category_id( $product['familia_descripcion'], $category_id );
+		$category_id    = $this->generate_category_id( $product['category'] );
+		$subcategory_id = $this->generate_category_id( $product['subcategory'], $category_id );
 
 		$ids = array( $brand_id, $category_id, $subcategory_id );
 
@@ -510,27 +331,11 @@ class Importer {
 			$category_id = wp_insert_term( $category_name, 'product_cat', $args );
 		}
 
-		return $category_id['term_id'];
-
-	}
-
-	/**
-	 * Add intervals for WordPress cron.
-	 *
-	 * @param Array $schedules The WordPress schedules.
-	 * @return Array
-	 */
-	public function get_intervals( $schedules ) {
-
-		$schedules[ self::CRON_INTERVAL ] = array(
-			'interval' => self::CRON_INTERVAL_TIME_IN_SECONDS,
-			'display'  => __(
-				'WooCommerce Eikon Interval',
-				'woocommerce-eikon'
-			),
-		);
-
-		return $schedules;
+		if ( is_wp_error( $category_id ) ) {
+			return null;
+		} else {
+			return $category_id['term_id'];
+		}
 
 	}
 

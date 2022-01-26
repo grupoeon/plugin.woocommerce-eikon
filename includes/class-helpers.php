@@ -129,7 +129,7 @@ LOG;
 		}
 
 		file_put_contents(
-			DIR . "/logs/log_$id_$date.txt",
+			DIR . "/logs/log_{$id}_{$date}.txt",
 			$log,
 			FILE_APPEND
 		);
