@@ -61,11 +61,13 @@ class API {
 	 */
 	public function get_products() {
 
+		$max = 1000000;
+
 		$cached_products = get_transient( 'wc_eikon_products' );
 
 		if ( $cached_products ) {
 
-			return $cached_products;
+			return array_slice( $cached_products, 0, $max );
 
 		}
 
@@ -119,7 +121,7 @@ class API {
 
 		set_transient( 'wc_eikon_products', $products, self::ENDPOINT_CACHE_EXPIRATION_IN_SECONDS );
 
-		return $products;
+		return array_slice( $products, 0, $max );
 
 	}
 

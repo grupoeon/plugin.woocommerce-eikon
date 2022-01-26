@@ -63,6 +63,7 @@ class Eikon {
 		define( __NAMESPACE__ . '\FILE', __FILE__ );
 		define( __NAMESPACE__ . '\DIR', plugin_dir_path( FILE ) );
 		define( __NAMESPACE__ . '\URL', plugin_dir_url( FILE ) );
+		define( __NAMESPACE__ . '\DEBUG', true );
 
 	}
 

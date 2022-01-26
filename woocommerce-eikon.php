@@ -47,3 +47,14 @@ add_action(
 	},
 	11
 );
+
+
+add_action(
+	'admin_notices',
+	function() {
+		echo '<pre>';
+		var_dump( get_option( 'wc_eikon_last_proccessed' ) );
+		var_dump( get_option( 'wc_eikon_import_status' ) );
+		echo '</pre>';
+	}
+);

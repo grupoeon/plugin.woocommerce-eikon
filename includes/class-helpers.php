@@ -100,22 +100,36 @@ class Helpers {
 	 */
 	public function log( $id, ...$args ) {
 
-		$time = microtime( true );
-		ob_start();
-		var_dump( $args );
-		$json = ob_get_clean();
-		$log  = <<<LOG
+		$now  = \DateTime::createFromFormat( 'U.u', microtime( true ), wp_timezone() );
+		$time = $now->format( 'Y-m-d H:i:s.u' );
+		$date = $now->format( 'Ymd' );
+
+		if ( 1 === count( $args ) && 'string' === gettype( $args[0] ) ) {
+
+			$log = <<<LOG
+[$time]: $args[0]
+
+LOG;
+
+		} else {
+
+			ob_start();
+			var_dump( $args );
+			$json = ob_get_clean();
+
+			$log = <<<LOG
 
 ========================================================================
-[$time]: $id
-------------------------------------------------------------------------
+[$time]:
 $json
 ========================================================================
 
 LOG;
 
+		}
+
 		file_put_contents(
-			DIR . "/logs/log_$id.json",
+			DIR . "/logs/log_$id_$date.txt",
 			$log,
 			FILE_APPEND
 		);
